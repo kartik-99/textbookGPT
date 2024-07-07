@@ -1,0 +1,6 @@
+# files
+.env
+
+# directories
+.ipynb_checkpoints
+notebooks
