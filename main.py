@@ -11,7 +11,7 @@ import os
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain_core.messages import HumanMessage
-
+from tqdm import tqdm
 
 
 class Document:
@@ -20,18 +20,22 @@ class Document:
         self.metadata = metadata or {}
 
 
-def extract_text_from_pdf(pdf_path):
+def extract_text_from_pdf(pdf_path, pbar):
     reader = PdfReader(pdf_path)
     text = ""
+    step_size = round(75/len(reader.pages), 2) - 0.01
     for page in reader.pages:
         text += page.extract_text()
+        pbar.update(step_size)
     return text
 
 
-def split_text_into_chunks(text, chunk_size=1000):
+def split_text_into_chunks(text,  pbar, chunk_size=1000,):
     chunks = []
+    step_size = round(23/len(range(0, len(text), chunk_size)), 2) - 0.01
     for i in range(0, len(text), chunk_size):
-        chunks.append(text[i: i + chunk_size])
+        chunks.append(Document(text[i: i + chunk_size]))
+        pbar.update(step_size)
     return chunks
 
 def get_session_history(session_id: str) -> BaseChatMessageHistory:
@@ -48,18 +52,19 @@ Just enter your pdf path, and once the GPT trains on it, you can start chatting 
 Once you are finished chatting, just press 'exit' or 'quit' and we will end the chat for you!
 """)
 
-pdf_path = input("Enter the path to the PDF file: ")
+pdf_path = input("Enter the path to the PDF file: ").strip()
+
+total_iterations = 100
+pbar = tqdm(total=total_iterations, desc="Reading the book... ", ncols=100, bar_format='{l_bar}{bar}')
 
 # Extract text from the PDF
-text = extract_text_from_pdf(pdf_path)
+text = extract_text_from_pdf(pdf_path, pbar)
 
 # Split text into chunks
-chunks = split_text_into_chunks(text)
+documents = split_text_into_chunks(text, pbar)
 
-# Wrap chunks in Document objects
-documents = [Document(chunk) for chunk in chunks]
 
-# Step 3: Store chunks in Chroma vector database
+# Store chunks in Chroma vector database
 embeddings = OpenAIEmbeddings()
 vectorstore = Chroma("pdf_chunks", embeddings)
 vectorstore.add_texts([doc.page_content for doc in documents], [doc.metadata for doc in documents])
@@ -115,10 +120,14 @@ conversational_rag_chain = RunnableWithMessageHistory(
     output_messages_key="answer",
 )
 
+pbar.update(pbar.total - pbar.n)
+pbar.close()
+print("Reading complete! Let me know your first question :)\n")
+
 chat_history = []
 
 while True:
-    question = input("You		: ")
+    question = input("You		: ").strip()
     if question.lower() in ["exit", "quit"]:
         print(f"TextbookGPT	: Hope I was helpful! Do use me again :)")
         break
